@@ -1,0 +1,96 @@
+{% extends "_base.html" %}
+
+{% block title %}Home - WoundVision{% endblock %}
+
+{% block content %}
+<div class="p-5 mb-4 bg-white rounded-3 shadow-sm">
+    <div class="container-fluid py-3">
+        <h1 class="display-5 fw-bold">WoundVision Engine</h1>
+        <p class="col-md-8 fs-4">Upload one or more images to perform a comprehensive quantitative analysis of wound characteristics using our custom-trained AI model.</p>
+    </div>
+</div>
+
+<div class="card mb-4 shadow-sm">
+    <div class="card-header fw-bold">System Status</div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-4">
+                <p>Detectron2 Model:
+                    {% if detectron2_ok %}
+                        <span class="badge bg-success">Loaded</span>
+                    {% else %}
+                        <span class="badge bg-danger">Error</span>
+                    {% endif %}
+                </p>
+            </div>
+            <div class="col-md-4">
+                <p>Scikit-Image:
+                    {% if skimage_ok %}
+                        <span class="badge bg-success">Available</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Not Found</span> (Texture analysis disabled)
+                    {% endif %}
+                </p>
+            </div>
+             <div class="col-md-4">
+                <p>SciPy:
+                    {% if scipy_ok %}
+                        <span class="badge bg-success">Available</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Not Found</span> (FD R² disabled)
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<div class="card shadow-sm">
+    <div class="card-header fw-bold">Start New Analysis</div>
+    <div class="card-body">
+        <form id="analysis-form" enctype="multipart/form-data">
+            <div class="mb-3">
+                <label for="images" class="form-label"><h5>1. Select Image Files</h5></label>
+                <input class="form-control" type="file" id="images" name="images" multiple required accept="image/png, image/jpeg, image/bmp, image/tiff">
+                <div class="form-text">You can select multiple files. Images are processed in alphabetical order to track trends.</div>
+            </div>
+
+            <h5 class="mt-4">2. Set Analysis Parameters</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="score_thresh" class="form-label">Detection Threshold: <span id="score-val">0.50</span></label>
+                    <input type="range" class="form-range" min="0.1" max="0.95" step="0.05" id="score_thresh" name="score_thresh" value="0.5">
+                    <div class="form-text">Lower values detect more, but might be less accurate.</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="pixels_per_cm" class="form-label">Pixels per cm (Optional)</label>
+                    <input type="number" class="form-control" id="pixels_per_cm" name="pixels_per_cm" placeholder="e.g., 45.5">
+                    <div class="form-text">Provide this for measurements in cm/cm².</div>
+                </div>
+            </div>
+
+            <hr>
+            <button type="submit" class="btn btn-primary btn-lg mt-3" id="start-analysis-btn" {% if not detectron2_ok %}disabled{% endif %}>
+                <i class="bi bi-play-circle-fill"></i> Start Analysis
+            </button>
+        </form>
+    </div>
+</div>
+
+<div id="progress-section" class="mt-4" style="display: none;">
+    <h4>Analysis in Progress...</h4>
+    <div class="progress" style="height: 30px;">
+        <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+    </div>
+    
+    <div class="mt-3">
+        <label for="log-output" class="form-label">Live Log:</label>
+        <textarea id="log-output" class="form-control" rows="15" readonly style="font-family: monospace; font-size: 0.8rem; background-color: #333; color: #eee;"></textarea>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/script.js') }}"></script>
+{% endblock %}

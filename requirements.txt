@@ -1,0 +1,8 @@
+opencv-python
+matplotlib
+torch
+torchvision
+scipy
+scikit-image
+Flask
+#-e ./detectron2
