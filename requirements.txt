@@ -1,7 +1,8 @@
+# requirements.txt (CPU-only)
+torch==2.5.1
+torchvision==0.20.1
 opencv-python
 matplotlib
-torch
-torchvision
 scipy
 scikit-image
 Flask
