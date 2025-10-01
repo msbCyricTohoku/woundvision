@@ -1,0 +1,2 @@
+ImageName,InstanceID,Area_pixels2,Perimeter_pixels,Circularity,Area_cm2,Perimeter_cm,DominantColor1_BGR,Tissue_Granulation_%,Sharpness_LaplacianVar,MarginRednessIndex,MeanDepth_Laplacian,Texture_Contrast,Texture_Dissimilarity,Texture_Homogeneity,Texture_Energy,Texture_Correlation,Texture_ASM
+images.jpeg,0,8609,387.8,0.719,,,"(119, 135, 210)",79.4,214.57,0.29,897.2145,21.7224,0.0599,0.0112,0.7864,0.0001

@@ -298,74 +298,6 @@ def calculate_sharpness(image, mask, log_queue=None):
         if log_queue: log_queue.put(f"WARN: Sharpness calculation error: {e}")
         return None
 
-def calculate_fractal_dimension_dbc(image, mask, output_plot_path=None, log_queue=None):
-    def local_log(msg):
-        if log_queue: log_queue.put(msg)
-        else: print(msg)
-    mask_bool = mask.astype(bool)
-    if not np.any(mask_bool): return None
-    try:
-        gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        coords = np.argwhere(mask_bool)
-        if coords.shape[0] < 4: return None
-        rows, cols = coords.T
-        rmin, rmax, cmin, cmax = rows.min(), rows.max(), cols.min(), cols.max()
-        h, w = rmax - rmin + 1, cmax - cmin + 1
-        if h < 2 or w < 2: return None
-        
-        gray_cropped = gray_image[rmin:rmax+1, cmin:cmax+1]
-        mask_cropped = mask_bool[rmin:rmax+1, cmin:cmax+1]
-        
-        if np.std(gray_cropped[mask_cropped]) < 1e-6: return 2.0
-
-        max_box_limit = max(4, min(h, w) // 3)
-        if max_box_limit < 2: return None
-        box_sizes = sorted(list(set(np.round(np.geomspace(2, max_box_limit, num=8)).astype(int))))
-        if not box_sizes: return None
-
-        counts, valid_box_sizes = [], []
-        for r in box_sizes:
-            N_r = 0
-            for j in range(0, h, r):
-                for i in range(0, w, r):
-                    block_mask = mask_cropped[j:min(j + r, h), i:min(i + r, w)]
-                    if np.any(block_mask):
-                        masked_block_pixels = gray_cropped[j:min(j + r, h), i:min(i + r, w)][block_mask]
-                        if masked_block_pixels.size > 0:
-                            intensity_range = int(np.max(masked_block_pixels)) - int(np.min(masked_block_pixels))
-                            N_r += 1 if intensity_range == 0 else math.ceil(intensity_range / r)
-            if N_r > 0:
-                counts.append(N_r)
-                valid_box_sizes.append(r)
-
-        if len(counts) < 3: return None
-        
-        log_counts = np.log(np.array(counts))
-        log_inv_sizes = np.log(1.0 / np.array(valid_box_sizes))
-        
-        if SCIPY_AVAILABLE:
-            slope, intercept, r_value, _, _ = linregress(log_inv_sizes, log_counts)
-            r_squared = r_value**2
-            if r_squared < 0.90: local_log(f"  WARN: Low R^2 ({r_squared:.2f}) for FD fit.")
-        else:
-            slope, intercept = np.polyfit(log_inv_sizes, log_counts, 1)
-            r_squared = None
-        fractal_dim = slope
-
-        if output_plot_path:
-            plot_fig_fd, ax = plt.subplots(figsize=(7, 5))
-            ax.scatter(log_inv_sizes, log_counts, label='Data points', color='blue')
-            ax.plot(log_inv_sizes, slope * log_inv_sizes + intercept, label=f'Fit (FD = {fractal_dim:.3f})', color='red', linestyle='--')
-            title = f'Fractal Dimension (DBC) Log-Log Plot\nFD = {fractal_dim:.3f}'
-            if r_squared is not None: title += f', R² = {r_squared:.3f}'
-            ax.set_title(title, fontsize=10)
-            ax.set_xlabel('log(1 / Box Size r)'); ax.set_ylabel('log(Box Count N_r)'); ax.legend(); ax.grid(True)
-            plt.tight_layout(); plt.savefig(output_plot_path); plt.close(plot_fig_fd)
-        
-        return float(round(fractal_dim, 3)) if not np.isnan(fractal_dim) else None
-    except Exception as e:
-        local_log(f"WARN: FD calculation error: {e}")
-        return None
 
 
 def create_composite_visualization(original_image, mask, instance_data, histogram_path, dominant_colors_swatch_img, tissue_vis_img, output_path, base_name_no_ext, instance_id, pixels_per_cm=None, log_queue=None):
@@ -443,8 +375,7 @@ def create_composite_visualization(original_image, mask, instance_data, histogra
         metrics_text += f"  Necrotic: {tp.get('Necrotic', 0.0):.1f}%\n\n"
         sh = instance_data.get("Sharpness")
         metrics_text += f"Sharpness (LapVar): {sh:.2f}\n" if sh is not None else "Sharpness: N/A\n"
-        fd = instance_data.get("FractalDimension")
-        metrics_text += f"Fractal Dim (DBC): {fd:.3f}\n" if fd is not None else "Fractal Dim: N/A\n"
+
         ax[2, 1].text(0.05, 0.95, metrics_text, ha='left', va='top', fontsize=10, bbox=dict(boxstyle='round,pad=0.5', fc='aliceblue', alpha=0.9))
         ax[2, 1].set_title("Calculated Metrics"); ax[2, 1].axis('off')
 
@@ -457,19 +388,7 @@ def create_composite_visualization(original_image, mask, instance_data, histogra
         if comp_fig: plt.close(comp_fig)
 
 
-def simulate_healing_stages_erosion(initial_mask_uint8, num_stages=5, iterations_per_stage=2, log_queue=None):
-    if initial_mask_uint8 is None or num_stages < 1: return []
-    current_mask = initial_mask_uint8.copy()
-    stage_masks = [current_mask.copy()]
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    for _ in range(num_stages - 1):
-        if np.sum(current_mask) == 0:
-            stage_masks.extend([current_mask.copy()] * (num_stages - len(stage_masks)))
-            break
-        eroded_mask = cv2.erode(current_mask, kernel, iterations=iterations_per_stage)
-        stage_masks.append(eroded_mask)
-        current_mask = eroded_mask
-    return stage_masks
+
 
 def simulate_healing_stages_distance_transform(initial_mask_uint8, num_stages=5, shrink_factor=0.6, log_queue=None):
     if initial_mask_uint8 is None or num_stages < 1: return []
@@ -551,18 +470,6 @@ def assess_margin_redness(image, mask, dilation=10, log_queue=None):
 
 
 
-def compute_wound_severity_score(metrics):
-    try:
-        score = 0
-        score += min(metrics.get("Area_pixels2", 0) / 10000, 1.0) * 25
-        score += min(metrics.get("TissuePercentages", {}).get("Necrotic", 0) / 50, 1.0) * 25
-        score += max(1.0 - metrics.get("Circularity", 0), 0) * 20
-        score += min(metrics.get("FractalDimension", 2.0) / 3.0, 1.0) * 15
-        score += min(metrics.get("Sharpness", 0) / 1000, 1.0) * 15
-        return round(score, 2)  #tot out of 100
-    except Exception:
-        return None
-
 
 
 def run_inference_on_folder(image_folder, output_folder, predictor, dataset_metadata,
@@ -574,7 +481,7 @@ def run_inference_on_folder(image_folder, output_folder, predictor, dataset_meta
             print(msg)
 
     os.makedirs(output_folder, exist_ok=True)
-    subfolder_keys = ["histograms", "masked_regions", "dominant_colors", "pseudo_3d_plots", "tissue_estimates", "periwound_analysis", "composite_visualizations", "fractal_dimension_plots", "healing_simulations_erosion", "healing_simulations_distance"]
+    subfolder_keys = ["histograms", "masked_regions", "dominant_colors", "pseudo_3d_plots", "tissue_estimates", "periwound_analysis", "composite_visualizations", "healing_simulations_distance"]
     folder_paths = {name: os.path.join(output_folder, name) for name in subfolder_keys}
     for path_val in folder_paths.values(): os.makedirs(path_val, exist_ok=True)
 
@@ -584,8 +491,9 @@ def run_inference_on_folder(image_folder, output_folder, predictor, dataset_meta
     #csv header -- may need to revise if need more intermed. res. 
     with open(metrics_file_path, 'w') as f_metrics:
         header = ("ImageName,InstanceID,Area_pixels2,Perimeter_pixels,Circularity,Area_cm2,Perimeter_cm,"
-                  "DominantColor1_BGR,Tissue_Granulation_%,Sharpness_LaplacianVar,FractalDimension_DBC,"
-                  "WoundSeverityScore,MarginRednessIndex,MeanDepth_Laplacian\n")
+                  "DominantColor1_BGR,Tissue_Granulation_%,Sharpness_LaplacianVar,"
+                  "MarginRednessIndex,MeanDepth_Laplacian,"
+                  "Texture_Contrast,Texture_Dissimilarity,Texture_Homogeneity,Texture_Energy,Texture_Correlation,Texture_ASM\n")
         f_metrics.write(header)
 
     local_log("Searching for images in upload folder...")
@@ -670,7 +578,10 @@ def run_inference_on_folder(image_folder, output_folder, predictor, dataset_meta
             if tissue_vis_img is not None: cv2.imwrite(instance_paths['tissue_estimates'], tissue_vis_img)
 
             instance_data["Sharpness"] = calculate_sharpness(img, mask_instance, log_queue=log_queue)
-            instance_data["FractalDimension"] = calculate_fractal_dimension_dbc(img, mask_instance, instance_paths['fractal_dimension_plots'], log_queue=log_queue)
+
+
+            texture_features = calculate_texture_features(img, mask_instance, log_queue=log_queue)
+            instance_data["Texture"] = texture_features if texture_features else {}
             
 
             depth_data = estimate_wound_depth(img, mask_instance, log_queue=log_queue)
@@ -681,14 +592,11 @@ def run_inference_on_folder(image_folder, output_folder, predictor, dataset_meta
             redness = assess_margin_redness(img, mask_instance, log_queue=log_queue)
             instance_data["MarginRednessIndex"] = redness
             
-            severity_score = compute_wound_severity_score(instance_data)
-            instance_data["WoundSeverityScore"] = severity_score
 
 
             plot_pseudo_3d_wound(img, mask_instance, instance_paths['pseudo_3d_plots'], log_queue=log_queue)
             
-            sim_stages_erosion = simulate_healing_stages_erosion(mask_uint8, log_queue=log_queue)
-            if sim_stages_erosion: plot_healing_stages(img, sim_stages_erosion, instance_paths['healing_simulations_erosion'], base_name_no_ext, i, "Erosion", log_queue)
+
             sim_stages_dist = simulate_healing_stages_distance_transform(mask_uint8, log_queue=log_queue)
             if sim_stages_dist: plot_healing_stages(img, sim_stages_dist, instance_paths['healing_simulations_distance'], base_name_no_ext, i, "Distance Transform", log_queue)
             
@@ -697,7 +605,7 @@ def run_inference_on_folder(image_folder, output_folder, predictor, dataset_meta
             if boxes is not None and i < len(boxes):
                 x1, y1, _, _ = boxes[i].astype(int)
 
-                text = f"Inst {i}: Area={instance_data.get('Area_pixels2', 'N/A')}px | Severity: {instance_data.get('WoundSeverityScore', 'N/A')}"
+                text = f"Inst {i}: Area={instance_data.get('Area_pixels2', 'N/A')}px"
                 cv2.putText(result_img_vis, text, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
             
             all_metrics_data.append(instance_data)
@@ -706,9 +614,11 @@ def run_inference_on_folder(image_folder, output_folder, predictor, dataset_meta
                 row = (f"{base_name},{i},{instance_data.get('Area_pixels2','')},{instance_data.get('Perimeter_pixels','')},"
                        f"{instance_data.get('Circularity',''):.3f},{instance_data.get('Area_cm2','')},{instance_data.get('Perimeter_cm','')},"
                        f"\"{dominant_colors[0] if dominant_colors else ''}\",{tissue_percentages.get('Granulation','')},"
-                       f"{instance_data.get('Sharpness','')},{instance_data.get('FractalDimension','')},"
-                       f"{instance_data.get('WoundSeverityScore', '')},{instance_data.get('MarginRednessIndex', '')},"
-                       f"{instance_data.get('MeanDepth', '')}\n")
+                       f"{instance_data.get('MarginRednessIndex', '')},"
+                       f"{instance_data.get('MeanDepth', '')},"
+                       f"{instance_data.get('Texture', {}).get('contrast', '')},{instance_data.get('Texture', {}).get('dissimilarity', '')},"
+                       f"{instance_data.get('Texture', {}).get('homogeneity', '')},{instance_data.get('Texture', {}).get('energy', '')},"
+                       f"{instance_data.get('Texture', {}).get('correlation', '')},{instance_data.get('Texture', {}).get('ASM', '')}\n")
                 f.write(row)
 
         vis_out_path = os.path.join(output_folder, f"{base_name_no_ext}_prediction_with_metrics.png")
