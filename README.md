@@ -81,9 +81,7 @@ By default the app uses **CPU** (`cfg.MODEL.DEVICE = "cpu"`). Switch to GPU by s
 
 ---
 
-## License & Disclaimer
-
-This is a research prototype. **Not a medical device.**
+## License
 
 © 2025 WoundVision by XRadion Dynamics. See `LICENSE`.
 
